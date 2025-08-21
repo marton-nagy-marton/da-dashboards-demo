@@ -100,6 +100,19 @@ elif distr_type == 'Power-law':
 population_df = pd.DataFrame({'value': population})
 sample_df = population_df.sample(n=sample_size, replace=False, random_state=rnd_state)
 
+st.sidebar.download_button(
+    label="Download Population Data",
+    data=sample_df.to_csv(index=False).encode('utf-8'),
+    file_name='ch05_generalization_population_data.csv',
+    mime='text/csv'
+)
+st.sidebar.download_button(
+    label="Download Sample Data",
+    data=sample_df.to_csv(index=False).encode('utf-8'),
+    file_name='ch05_generalization_sample_data.csv',
+    mime='text/csv'
+)
+
 # Visuals on population and sample
 col1, col2 = st.columns(2)
 with col1:

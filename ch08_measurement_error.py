@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 import seaborn as sns
 import statsmodels.api as sm
 
@@ -11,14 +12,67 @@ st.set_page_config(page_title='Ch. 8 - Measurement Error', layout="wide")
 st.title('Ch. 8 - Measurement Error')
 
 st.markdown(
-'''
-This dashboard explores the impact of measurement error on regression analysis.
-You can simulate different types of measurement errors in the distance and price variables, visualize their distributions, and see how they affect regression results.
-The dashboard allows you to adjust parameters such as error type, standard deviation, mean, and correlation with the rating variable.
-You can also choose to log-transform the variables and select the polynomial degree for regression.
-The dashboard is built on the `hotels-europe` dataset, focusing on hotel prices in London on weekdays in November 2017 (N = 578).
-The data has been filtered to include only hotels with at least 3 stars, within 10 miles of the city center, and with a valid rating.
-''')
+"""
+## Introduction  
+
+This interactive dashboard explores the impact of **measurement error** on regression analysis, 
+with a focus on hotel prices in London.  
+The app uses the `hotels-europe` dataset, which contains information on hotel prices, distance 
+from the city center, and customer ratings.  
+For this analysis, we restrict the data to:  
+
+- Hotels located in **London**  
+- **Hotel-type accommodations** with at least **3 stars**  
+- Hotels located within **10 miles** of the city center  
+- Valid customer ratings  
+- Weekday prices (November 2017, N = 578)  
+
+By experimenting with different forms of measurement error and transformations, you can observe 
+how regression results are distorted and gain intuition for the consequences of error-prone 
+measurement in applied econometric work.  
+
+## Concepts  
+
+- **Measurement Error:** Random or systematic noise added to observed variables that can 
+  bias regression estimates.  
+  - *Classical error*: Random error with mean zero, uncorrelated with the true variable.  
+  - *Non-Classical error (Bias)*: Error with non-zero mean, shifting the variable systematically.  
+  - *Non-Classical error (Correlated)*: Error that is correlated with another variable (e.g., hotel rating).  
+
+- **Log Transformation:** Allows you to express variables in relative rather than absolute terms, 
+  often improving interpretability of elasticities and reducing skewness.   
+
+- **Filtering:** Data can be restricted to exclude implausible values after adding measurement error 
+  (e.g., hotels with <1 mile distance or < USD 50 nightly price).  
+
+- **Regression Analysis:** The dashboard runs simple OLS regressions with robust (HC3) standard errors 
+  to compare estimates with and without measurement error.  
+
+## Functionalities  
+
+- **Add Measurement Error**  
+  - Choose type (Classical, Non-Classical Bias, Non-Classical Correlated).  
+  - Adjust parameters such as error mean, error SD, and correlation with rating.  
+
+- **Variable Transformations**  
+  - Apply log transformation to distance and/or price.  
+  - Plots automatically back-transform tick labels to display values in original units.  
+
+- **Filtering Options**  
+  - Exclude hotels with <1 mile distance (after measurement error).  
+  - Exclude hotels with <£50 price (after measurement error).  
+
+- **Visualizations**  
+  - Histograms showing the distribution of variables with and without error.  
+  - Scatterplots with fitted regression lines comparing error-free vs. error-prone data.  
+
+- **Regression Output**  
+  - Side-by-side tables of regression coefficients and robust standard errors.  
+  - Significance stars (***, **, *) for quick interpretation.  
+
+"""
+)
+
 
 # Load and cach data from OSF
 @st.cache_data
@@ -78,34 +132,57 @@ log_y = st.sidebar.checkbox("Log-transform Y (Price)")
 
 # Filter out less than 1 mile
 st.sidebar.header("Data Filtering")
-filtersmall = st.sidebar.checkbox("Filter out hotels with distance < 1 mile", value=True)
-if filtersmall:
-    data = data[data['distance'] >= 1]
+filtersmall = st.sidebar.checkbox("Filter out hotels where distance (with measurement error) < 1 mile", value=True)
+filtersmall_price = st.sidebar.checkbox("Filter out hotels where price (with measurement error) < 50 USD", value=True)
 
 # Create noisy data
-x = data['distance'].copy()
-y = data['price'].copy()
+data['distance_err'] = data['distance'] + x_error_fn(data)
+data['price_err'] = data['price'] + y_error_fn(data)
 
-x_err = x + x_error_fn(data)
-y_err = y + y_error_fn(data)
+# Log transformation
+data['ln_distance'] = np.log(data['distance'])
+data['ln_price'] = np.log(data['price'])
+data['ln_distance_err'] = np.log(data['distance_err'])
+data['ln_price_err'] = np.log(data['price_err'])
 
-x_err[x_err <= 0] = x.min()
-y_err[y_err <= 0] = y.min()
+# Download data
+st.sidebar.download_button(
+    label="Download Data (without filters)",
+    data=data.to_csv(index=False).encode('utf-8'),
+    file_name='ch08_measurement_error_data.csv',
+    mime='text/csv',
+)
 
-# Apply log transformations if selected
+# Filter out hotels with distance < 1 mile
+if filtersmall:
+    data = data[data['distance_err'] >= 1]
+
+# Filter out hotels with price < 50
+if filtersmall_price:
+    data = data[data['price_err'] >= 50]
+
+# stop if there are invalid values
+if data['distance_err'].min() <= 0:
+    st.warning("Invalid values detected in distance (with error). Please apply filtering or reduce the measurement error.")
+    st.stop()
+if data['price_err'].min() <= 0:
+    st.warning("Invalid values detected in price (with error). Please apply filtering or reduce the measurement error.")
+    st.stop()
+
+# Select variables for plotting
 if log_x:
-    x_plot = np.log(x)
-    x_err_plot = np.log(x_err)
+    x_plot = data['ln_distance']
+    x_err_plot = data['ln_distance_err']
 else:
-    x_plot = x
-    x_err_plot = x_err
+    x_plot = data['distance']
+    x_err_plot = data['distance_err']
 
 if log_y:
-    y_plot = np.log(y)
-    y_err_plot = np.log(y_err)
+    y_plot = data['ln_price']
+    y_err_plot = data['ln_price_err']
 else:
-    y_plot = y
-    y_err_plot = y_err
+    y_plot = data['price']
+    y_err_plot = data['price_err']
 
 # Histogram plots with overlays
 fig, axs = plt.subplots(1, 2, figsize=(12, 4))
@@ -113,7 +190,10 @@ fig, axs = plt.subplots(1, 2, figsize=(12, 4))
 # Distance histogram overlay
 sns.histplot(x_plot, ax=axs[0], color=color[0], alpha=0.5, label="Without Error", binwidth=0.5 if not log_x else 0.25)
 sns.histplot(x_err_plot, ax=axs[0], color=color[1], alpha=0.5, label="With Error", binwidth=0.5 if not log_x else 0.25)
-axs[0].set_xlabel("Distance" if not log_x else "ln(Distance)")
+# Formatting ticks to always be original units
+if log_x:
+    axs[0].xaxis.set_major_formatter(FuncFormatter(lambda val, pos: f"{np.exp(val):.1f}"))
+axs[0].set_xlabel("Distance (miles)")
 axs[0].set_ylabel("Frequency")
 axs[0].spines[['top', 'right']].set_visible(False)
 axs[0].legend()
@@ -121,14 +201,16 @@ axs[0].legend()
 # Price histogram overlay
 sns.histplot(y_plot, ax=axs[1], color=color[0], alpha=0.5, label="Without Error", binwidth=25 if not log_y else 0.25)
 sns.histplot(y_err_plot, ax=axs[1], color=color[1], alpha=0.5, label="With Error", binwidth=25 if not log_y else 0.25)
-axs[1].set_xlabel("Price" if not log_y else "ln(Price)")
+# Formatting ticks to always be original units
+if log_y:
+    axs[1].xaxis.set_major_formatter(FuncFormatter(lambda val, pos: f"{np.exp(val):.0f}"))
+axs[1].set_xlabel("Price (USD)")
 axs[1].set_ylabel("Frequency")
 axs[1].spines[['top', 'right']].set_visible(False)
 axs[1].legend()
 
 # Show the plots
 st.subheader("Distribution of Variables with and without Measurement Error")
-st.write('Note: In the data with measurement error, non-positive values have been replaced with the minimum of the original data to avoid meaningless values.')
 st.pyplot(fig, clear_figure=False)
 
 # Combined regression plot
@@ -148,9 +230,15 @@ x_fit_err = np.linspace(min(x_err_plot), max(x_err_plot), 100)
 y_fit_err = model_err.predict(np.vander(x_fit_err, N=2, increasing=True))
 ax.plot(x_fit_err, y_fit_err, color=color[1], linewidth=2, label="With Error")
 
-# Labels and styling
-ax.set_xlabel("ln(Distance)" if log_x else "Distance")
-ax.set_ylabel("ln(Price)" if log_y else "Price")
+# Formatting ticks to always be original units
+if log_x:
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda val, pos: f"{np.exp(val):.1f}"))
+ax.set_xlabel("Distance (miles)")
+
+if log_y:
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda val, pos: f"{np.exp(val):.0f}"))
+ax.set_ylabel("Price (USD)")
+
 ax.spines[['top', 'right']].set_visible(False)
 ax.legend()
 

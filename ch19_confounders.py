@@ -74,21 +74,32 @@ intercept_hr = st.sidebar.slider("Intercept: Heart Rate", 40.0, 100.0, 60.0, ste
 
 # --- Causal DAG (Graphviz) ---
 
-# format coefficients with 2 decimals for labels
 label = lambda x: f"{x:.2f}"
 
 dot = f"""
 digraph G {{
-  rankdir=LR;
+  rankdir=TB;  // top-to-bottom layout
   node [shape=box, style=rounded, fontsize=12];
 
+  // Node definitions with highlights
+  caffeine [label="caffeine\\n(mg)", style="filled,rounded", fillcolor="#3a5e8c", fontcolor="white"];
+  cognitive_ability [label="cognitive ability\\n(test score)", style="filled,rounded", fillcolor="#10a53d", fontcolor="white"];
   sleep [label="sleep"];
   age [label="age"];
-  caffeine [label="caffeine\\n(mg)"];
-  cognitive_ability [label="cognitive_ability\\n(test score)"];
-  heart_rate [label="heart_rate"];
+  heart_rate [label="heart rate"];
 
-  // Edges with labels = true coefficients (from sidebar sliders)
+  // Force row alignment
+  {{ rank=same; sleep; age }}
+  {{ rank=same; caffeine; cognitive_ability }}
+  {{ rank=same; heart_rate }}
+
+  // Invisible edges to center align across rows
+  sleep -> caffeine [style=invis];
+  age -> cognitive_ability [style=invis];
+  caffeine -> heart_rate [style=invis];
+  cognitive_ability -> heart_rate [style=invis];
+
+  // Real causal edges with labels
   sleep -> caffeine [label="{label(coef_sleep_to_caffeine)}"];
   age -> caffeine [label="{label(coef_age_to_caffeine)}"];
 
@@ -150,6 +161,14 @@ df = pd.DataFrame({
     "cognitive_ability": cognitive_ability,
     "heart_rate": heart_rate
 })
+
+# Download button
+st.sidebar.download_button(
+    label="Download Simulated Data",
+    data=df.to_csv(index=False).encode("utf-8"),
+    file_name="ch19_confounders_data.csv",
+    mime="text/csv"
+)
 
 # Model controls
 st.subheader("Regression Models")
@@ -251,6 +270,7 @@ ax.axvline(coef_true, color=color[1], linestyle="--", label="True Coefficient")
 
 ax.set_xlabel("Coefficient Estimate")
 ax.set_title("Caffeine Effect Estimates (95% CI)")
+ax.spines[['top', 'right']].set_visible(False)
 ax.legend()
 
 st.pyplot(fig)

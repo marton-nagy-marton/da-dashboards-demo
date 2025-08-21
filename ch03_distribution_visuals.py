@@ -60,6 +60,12 @@ workset = apply_filters(hotels_price, hotels_features, city, price_range[0], pri
 if workset.empty:
     st.error('No data available for the selected filters. Please adjust your selections.')
 else:
+    st.sidebar.download_button(
+        label="Download Filtered Data",
+        data=workset.to_csv(index=False).encode('utf-8'),
+        file_name='ch03_distribution_visuals_data.csv',
+        mime='text/csv'
+    )
     col1, col2 = st.columns(2)
     with col1:
         # Histogram (either by number of bins or bin width set by the user)
